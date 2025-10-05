@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mass Token Buy Bot - Base Network</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Mass Token Buy Bot</h1>
+            <p class="subtitle">Automated token purchasing on Base Network</p>
+        </header>
+
+        <!-- Password Protection Section -->
+        <div id="passwordSection" class="section">
+            <h2>🔐 Security</h2>
+            <div class="form-group">
+                <label for="masterPassword">Master Password (to encrypt private keys)</label>
+                <input type="password" id="masterPassword" placeholder="Enter a strong password" autocomplete="new-password">
+                <small>This password will be used to encrypt all wallet private keys stored locally</small>
+            </div>
+            <button id="unlockBtn" class="btn btn-primary">Unlock Application</button>
+        </div>
+
+        <!-- Main Application Section (hidden until unlocked) -->
+        <div id="appSection" class="section hidden">
+            <!-- Configuration Form -->
+            <div class="card">
+                <h2>⚙️ Configuration</h2>
+                <form id="configForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="tokenAddress">Token Address *</label>
+                            <input type="text" id="tokenAddress" placeholder="0x..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="numWallets">Number of Wallets *</label>
+                            <input type="number" id="numWallets" min="1" max="1000" placeholder="e.g., 100" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="masterPrivateKey">Master Wallet Private Key *</label>
+                            <input type="password" id="masterPrivateKey" placeholder="0x..." required autocomplete="off">
+                            <small>Never share your private key. It's encrypted locally.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="targetAddress">Target Wallet Address *</label>
+                            <input type="text" id="targetAddress" placeholder="0x..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="gasAmount">Gas Fee Amount (ETH) *</label>
+                            <input type="text" id="gasAmount" placeholder="0.0001" required>
+                            <small>ETH reserved for gas fees per wallet</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="purchaseAmount">Purchase Amount (ETH) *</label>
+                            <input type="text" id="purchaseAmount" placeholder="0.001" required>
+                            <small>ETH to swap for tokens per wallet</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="minKeptTokens">Minimum Kept Tokens *</label>
+                            <input type="text" id="minKeptTokens" placeholder="1000" required>
+                            <small>Minimum tokens to keep in each wallet</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="chain">Blockchain Network *</label>
+                            <select id="chain" required>
+                                <option value="base" selected>Base (ETH)</option>
+                                <option value="ethereum">Ethereum Mainnet</option>
+                                <option value="arbitrum">Arbitrum</option>
+                            </select>
+                            <small>Select the blockchain network</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="dex">DEX (Decentralized Exchange) *</label>
+                            <select id="dex" required>
+                                <option value="uniswap-v3" selected>Uniswap V3</option>
+                                <option value="uniswap-v2">Uniswap V2 Style</option>
+                            </select>
+                            <small>Select the DEX for token swaps</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="rpcUrl">Custom RPC URL (Optional)</label>
+                            <input type="text" id="rpcUrl" placeholder="Leave empty for default">
+                            <small>Custom RPC endpoint (optional)</small>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="startBtn">Start Operation</button>
+                        <button type="button" class="btn btn-secondary" id="stopBtn" disabled>Stop Operation</button>
+                        <button type="button" class="btn btn-secondary" id="loadConfigBtn">Load Saved Config</button>
+                        <button type="button" class="btn btn-secondary" id="clearDbBtn" style="background: #dc3545;">Clear Database</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Status Section -->
+            <div class="card">
+                <h2>📊 Status</h2>
+                <div id="statusContainer">
+                    <div class="status-item">
+                        <span class="label">Operation Status:</span>
+                        <span id="operationStatus" class="value">Idle</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Wallets Created:</span>
+                        <span id="walletsCreated" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">ETH Transferred:</span>
+                        <span id="ethTransferred" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Swaps Completed:</span>
+                        <span id="swapsCompleted" class="value">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Tokens Transferred:</span>
+                        <span id="tokensTransferred" class="value">0</span>
+                    </div>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Logs Section -->
+            <div class="card">
+                <h2>📝 Activity Logs</h2>
+                <div class="log-controls">
+                    <button class="btn btn-small" id="clearLogsBtn">Clear Logs</button>
+                    <button class="btn btn-small" id="exportLogsBtn">Export Logs</button>
+                </div>
+                <div id="logsContainer" class="logs-container"></div>
+            </div>
+
+            <!-- Transaction History -->
+            <div class="card">
+                <h2>💳 Transaction History</h2>
+                <div class="table-controls">
+                    <input type="text" id="searchTx" placeholder="Search transactions..." class="search-input">
+                    <button class="btn btn-small" id="exportTxBtn">Export CSV</button>
+                </div>
+                <div class="table-container">
+                    <table id="transactionTable">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>Type</th>
+                                <th>From</th>
+                                <th>To</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Tx Hash</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionTableBody">
+                            <tr>
+                                <td colspan="7" class="no-data">No transactions yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Wallets Section -->
+            <div class="card">
+                <h2>👛 Generated Wallets</h2>
+                <div class="table-controls">
+                    <button class="btn btn-small" id="exportWalletsBtn">Export Wallets</button>
+                    <small class="warning">⚠️ Private keys are encrypted. Export with caution.</small>
+                </div>
+                <div class="table-container">
+                    <table id="walletsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Address</th>
+                                <th>ETH Balance</th>
+                                <th>Token Balance</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="walletsTableBody">
+                            <tr>
+                                <td colspan="5" class="no-data">No wallets created yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>⚠️ <strong>Security Notice:</strong> All private keys are encrypted and stored locally in your browser. Never share your private keys or master password.</p>
+    </footer>
+</body>
+</html>
