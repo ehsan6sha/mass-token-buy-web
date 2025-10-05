@@ -373,6 +373,6 @@ Potential future enhancements:
 
 ---
 
-**⚠️ DISCLAIMER**: This software is for educational and personal use. Trading cryptocurrencies carries risk. Always test with small amounts first. The authors are not responsible for any losses incurred through the use of this software. Use at your own risk.
+**⚠️ DISCLAIMER**: This software is for educational and personal use. Trading cryptocurrencies carries risk. Always test with small amounts first. The authors are not responsible for any losses incurred through the use of this software. Use at your own risk. The software comes with absolute no warranty. It is not intended for production use. It is provided as is, without any warranty of any kind, express or implied. No legal advice or support is provided. The authors are not liable for any damages or losses incurred through the use of this software. The authors are not liable for any legal or financial consequences of using this software.
 
 **🔐 SECURITY WARNING**: Never share your private keys or master password. Always verify smart contract addresses before interacting. This tool handles sensitive cryptographic material - use responsibly.
