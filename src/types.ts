@@ -6,7 +6,8 @@ export interface AppConfig {
     masterPrivateKey: string;
     targetAddress: string;
     gasAmount: string;
-    purchaseAmount: string;
+    minPurchaseAmount: string;
+    maxPurchaseAmount: string;
     minKeptTokens: string;
     chain: string;
     dex: string;

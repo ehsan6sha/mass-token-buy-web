@@ -64,15 +64,37 @@ export class TransactionManager {
             this.log('success', `Master wallet loaded: ${masterWallet.address}`);
             this.log('info', `Master wallet balance: ${masterBalance} ETH`);
 
-            // Calculate total ETH needed
-            const ethPerWallet = parseFloat(config.gasAmount) + parseFloat(config.purchaseAmount);
-            const totalETHNeeded = ethPerWallet * config.numWallets;
+            // Calculate random purchase allocations
+            const gasAmount = parseFloat(config.gasAmount);
+            const minPurchase = parseFloat(config.minPurchaseAmount);
+            const maxPurchase = parseFloat(config.maxPurchaseAmount);
+            const availableBalance = parseFloat(masterBalance);
             
+            // Calculate total gas needed for all wallets
+            const totalGasNeeded = gasAmount * config.numWallets;
+            const availableForPurchases = availableBalance - totalGasNeeded;
+            
+            this.log('info', `Available balance: ${availableBalance.toFixed(6)} ETH`);
+            this.log('info', `Total gas reserved: ${totalGasNeeded.toFixed(6)} ETH`);
+            this.log('info', `Available for purchases: ${availableForPurchases.toFixed(6)} ETH`);
+            
+            // Generate random allocations
+            const purchaseAllocations = this.generateRandomAllocations(
+                config.numWallets,
+                availableForPurchases,
+                minPurchase,
+                maxPurchase
+            );
+            
+            const totalPurchaseAmount = purchaseAllocations.reduce((sum, val) => sum + val, 0);
+            const totalETHNeeded = totalGasNeeded + totalPurchaseAmount;
+            
+            this.log('info', `Total purchase amount: ${totalPurchaseAmount.toFixed(6)} ETH`);
             this.log('info', `Total ETH needed: ${totalETHNeeded.toFixed(6)} ETH`);
-            this.log('info', `ETH per wallet: ${ethPerWallet.toFixed(6)} ETH`);
+            this.log('info', `Purchase amounts range: ${Math.min(...purchaseAllocations).toFixed(8)} - ${Math.max(...purchaseAllocations).toFixed(8)} ETH`);
 
-            if (parseFloat(masterBalance) < totalETHNeeded) {
-                throw new Error(`Insufficient balance. Need ${totalETHNeeded} ETH, have ${masterBalance} ETH`);
+            if (totalETHNeeded > availableBalance) {
+                throw new Error(`Insufficient balance. Need ${totalETHNeeded.toFixed(6)} ETH, have ${masterBalance} ETH`);
             }
 
             // Step 3: Create wallets
@@ -80,7 +102,7 @@ export class TransactionManager {
             status.currentStep = 'Creating wallets';
             this.updateStatus(status);
 
-            const wallets: { wallet: ethers.Wallet; info: WalletInfo; dbId: number }[] = [];
+            const wallets: { wallet: ethers.Wallet; info: WalletInfo; dbId: number; purchaseAmount: number }[] = [];
 
             for (let i = 0; i < config.numWallets; i++) {
                 if (this.shouldStop) {
@@ -90,7 +112,8 @@ export class TransactionManager {
 
                 const { wallet, info } = await this.walletService.createWallet(password);
                 const dbId = await this.database.saveWallet(info);
-                wallets.push({ wallet, info, dbId });
+                const purchaseAmount = purchaseAllocations[i];
+                wallets.push({ wallet, info, dbId, purchaseAmount });
 
                 status.walletsCreated++;
                 status.progress = (i + 1) / (config.numWallets * 4) * 100; // 4 main steps
@@ -115,11 +138,11 @@ export class TransactionManager {
             for (let i = 0; i < wallets.length; i++) {
                 if (this.shouldStop) break;
 
-                const { wallet, dbId } = wallets[i];
-                const amountToSend = ethPerWallet.toFixed(18);
+                const { wallet, dbId, purchaseAmount } = wallets[i];
+                const amountToSend = (gasAmount + purchaseAmount).toFixed(18);
 
                 try {
-                    this.log('info', `Funding wallet ${i + 1}/${wallets.length}: ${wallet.address}`);
+                    this.log('info', `Funding wallet ${i + 1}/${wallets.length}: ${wallet.address} with ${amountToSend} ETH (${purchaseAmount.toFixed(8)} for purchase)`);
                     
                     // Create transaction record
                     const txRecord: Transaction = {
@@ -176,10 +199,12 @@ export class TransactionManager {
             for (let i = 0; i < wallets.length; i++) {
                 if (this.shouldStop) break;
 
-                const { wallet, dbId } = wallets[i];
+                const { wallet, dbId, purchaseAmount } = wallets[i];
 
                 try {
-                    this.log('info', `Swapping ETH for tokens in wallet ${i + 1}/${wallets.length}`);
+                    // Format purchase amount to max 18 decimals (ETH precision)
+                    const formattedAmount = purchaseAmount.toFixed(18);
+                    this.log('info', `Swapping ${purchaseAmount.toFixed(8)} ETH for tokens in wallet ${i + 1}/${wallets.length}`);
 
                     // Create transaction record
                     const txRecord: Transaction = {
@@ -187,7 +212,7 @@ export class TransactionManager {
                         type: 'token_swap',
                         fromAddress: wallet.address,
                         toAddress: wallet.address,
-                        amount: config.purchaseAmount,
+                        amount: formattedAmount,
                         token: config.tokenAddress,
                         status: 'pending'
                     };
@@ -197,7 +222,7 @@ export class TransactionManager {
                     const swapResult = await this.dexService.swapETHToToken(
                         wallet,
                         config.tokenAddress,
-                        config.purchaseAmount,
+                        formattedAmount,
                         0.5 // 0.5% slippage
                     );
 
@@ -525,8 +550,16 @@ export class TransactionManager {
             throw new Error('Gas amount must be greater than 0');
         }
 
-        if (parseFloat(config.purchaseAmount) <= 0) {
-            throw new Error('Purchase amount must be greater than 0');
+        if (parseFloat(config.minPurchaseAmount) <= 0) {
+            throw new Error('Minimum purchase amount must be greater than 0');
+        }
+
+        if (parseFloat(config.maxPurchaseAmount) <= 0) {
+            throw new Error('Maximum purchase amount must be greater than 0');
+        }
+
+        if (parseFloat(config.minPurchaseAmount) > parseFloat(config.maxPurchaseAmount)) {
+            throw new Error('Minimum purchase amount cannot exceed maximum purchase amount');
         }
 
         if (parseFloat(config.minKeptTokens) < 0) {
@@ -568,5 +601,57 @@ export class TransactionManager {
      */
     isOperationRunning(): boolean {
         return this.isRunning;
+    }
+
+    /**
+     * Generate random allocations for purchase amounts
+     * Uses bounded random distribution to ensure fair allocation within constraints
+     */
+    private generateRandomAllocations(
+        numWallets: number,
+        totalAvailable: number,
+        minAmount: number,
+        maxAmount: number
+    ): number[] {
+        // Step 1: Check feasibility
+        const minRequired = numWallets * minAmount;
+        const maxPossible = numWallets * maxAmount;
+
+        if (totalAvailable < minRequired) {
+            throw new Error(
+                `Insufficient funds for allocation. Need at least ${minRequired.toFixed(6)} ETH, ` +
+                `but only ${totalAvailable.toFixed(6)} ETH available after gas reserves.`
+            );
+        }
+
+        if (totalAvailable > maxPossible) {
+            this.log('warning', `Available funds (${totalAvailable.toFixed(6)} ETH) exceed maximum allocation ` +
+                `(${maxPossible.toFixed(6)} ETH). Will allocate up to maximum.`);
+        }
+
+        // Step 2: Initialize allocations at minimum
+        const allocations = new Array(numWallets).fill(minAmount);
+        let remaining = totalAvailable - minRequired;
+
+        // Step 3: Distribute remaining amount randomly while respecting max bounds
+        for (let i = 0; i < numWallets - 1; i++) {
+            // Maximum we can safely assign to this wallet
+            const maxCanAdd = maxAmount - minAmount;
+            const maxSafeAdd = Math.min(maxCanAdd, remaining);
+            
+            if (maxSafeAdd > 0) {
+                // Random amount between 0 and maxSafeAdd
+                const add = Math.random() * maxSafeAdd;
+                allocations[i] += add;
+                remaining -= add;
+            }
+        }
+
+        // Step 4: Give remaining to last wallet, capped at max
+        const lastWalletMax = maxAmount - minAmount;
+        const toAdd = Math.min(lastWalletMax, remaining);
+        allocations[numWallets - 1] += toAdd;
+
+        return allocations;
     }
 }

@@ -56,15 +56,27 @@ class App {
      * Setup event listeners
      */
     private setupEventListeners(): void {
+        // Terms checkbox - enable/disable unlock button
+        const termsCheckbox = document.getElementById('termsCheckbox') as HTMLInputElement;
+        const unlockBtn = document.getElementById('unlockBtn') as HTMLButtonElement;
+        
+        termsCheckbox?.addEventListener('change', () => {
+            if (unlockBtn) {
+                unlockBtn.disabled = !termsCheckbox.checked;
+            }
+        });
+
         // Unlock button
-        const unlockBtn = document.getElementById('unlockBtn');
         unlockBtn?.addEventListener('click', () => this.handleUnlock());
 
         // Password input - allow Enter key
         const masterPasswordInput = document.getElementById('masterPassword') as HTMLInputElement;
         masterPasswordInput?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                this.handleUnlock();
+                // Only unlock if terms are accepted
+                if (termsCheckbox?.checked) {
+                    this.handleUnlock();
+                }
             }
         });
 
@@ -295,8 +307,16 @@ class App {
             throw new Error('Gas amount must be a positive number');
         }
 
-        if (isNaN(parseFloat(config.purchaseAmount)) || parseFloat(config.purchaseAmount) <= 0) {
-            throw new Error('Purchase amount must be a positive number');
+        if (isNaN(parseFloat(config.minPurchaseAmount)) || parseFloat(config.minPurchaseAmount) <= 0) {
+            throw new Error('Minimum purchase amount must be a positive number');
+        }
+
+        if (isNaN(parseFloat(config.maxPurchaseAmount)) || parseFloat(config.maxPurchaseAmount) <= 0) {
+            throw new Error('Maximum purchase amount must be a positive number');
+        }
+
+        if (parseFloat(config.minPurchaseAmount) > parseFloat(config.maxPurchaseAmount)) {
+            throw new Error('Minimum purchase amount cannot be greater than maximum purchase amount');
         }
 
         if (isNaN(parseFloat(config.minKeptTokens)) || parseFloat(config.minKeptTokens) < 0) {

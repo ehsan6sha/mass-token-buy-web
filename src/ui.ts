@@ -66,7 +66,8 @@ export class UIManager {
             masterPrivateKey: (document.getElementById('masterPrivateKey') as HTMLInputElement).value.trim(),
             targetAddress: (document.getElementById('targetAddress') as HTMLInputElement).value.trim(),
             gasAmount: (document.getElementById('gasAmount') as HTMLInputElement).value.trim(),
-            purchaseAmount: (document.getElementById('purchaseAmount') as HTMLInputElement).value.trim(),
+            minPurchaseAmount: (document.getElementById('minPurchaseAmount') as HTMLInputElement).value.trim(),
+            maxPurchaseAmount: (document.getElementById('maxPurchaseAmount') as HTMLInputElement).value.trim(),
             minKeptTokens: (document.getElementById('minKeptTokens') as HTMLInputElement).value.trim(),
             chain: (document.getElementById('chain') as HTMLSelectElement).value,
             dex: (document.getElementById('dex') as HTMLSelectElement).value,
@@ -83,7 +84,8 @@ export class UIManager {
         (document.getElementById('masterPrivateKey') as HTMLInputElement).value = config.masterPrivateKey;
         (document.getElementById('targetAddress') as HTMLInputElement).value = config.targetAddress;
         (document.getElementById('gasAmount') as HTMLInputElement).value = config.gasAmount;
-        (document.getElementById('purchaseAmount') as HTMLInputElement).value = config.purchaseAmount;
+        (document.getElementById('minPurchaseAmount') as HTMLInputElement).value = config.minPurchaseAmount;
+        (document.getElementById('maxPurchaseAmount') as HTMLInputElement).value = config.maxPurchaseAmount;
         (document.getElementById('minKeptTokens') as HTMLInputElement).value = config.minKeptTokens;
         (document.getElementById('chain') as HTMLSelectElement).value = config.chain || 'base';
         (document.getElementById('dex') as HTMLSelectElement).value = config.dex || 'uniswap-v3';
