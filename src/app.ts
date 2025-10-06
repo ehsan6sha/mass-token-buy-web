@@ -306,12 +306,18 @@ class App {
         }
 
         // Prompt for optional custom gas limit
-        const gasLimitStr = prompt('Enter custom gas limit (leave empty for auto-estimation):');
-        const customGasLimit = gasLimitStr ? parseInt(gasLimitStr) : undefined;
-
-        if (gasLimitStr && (isNaN(customGasLimit!) || customGasLimit! <= 0)) {
-            this.uiManager.showError('Invalid gas limit');
-            return;
+        const gasLimitStr = prompt(
+            'Enter custom gas limit in units (e.g., 21000, 30000)\n' +
+            'Leave empty for automatic estimation:'
+        );
+        
+        let customGasLimit: number | undefined;
+        if (gasLimitStr && gasLimitStr.trim() !== '') {
+            customGasLimit = parseInt(gasLimitStr.trim());
+            if (isNaN(customGasLimit) || customGasLimit <= 0) {
+                this.uiManager.showError('Invalid gas limit. Must be a positive number (e.g., 21000)');
+                return;
+            }
         }
 
         // Get target address from config

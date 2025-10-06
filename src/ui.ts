@@ -216,8 +216,8 @@ export class UIManager {
                 <tr>
                     <td>${tx.timestamp.toLocaleString()}</td>
                     <td>${typeLabel}</td>
-                    <td title="${tx.fromAddress}">${this.truncateAddress(tx.fromAddress)}</td>
-                    <td title="${tx.toAddress}">${this.truncateAddress(tx.toAddress)}</td>
+                    <td>${this.renderAddressWithCopy(tx.fromAddress)}</td>
+                    <td>${this.renderAddressWithCopy(tx.toAddress)}</td>
                     <td>${parseFloat(tx.amount).toFixed(6)} ${tx.token || 'ETH'}</td>
                     <td><span class="status-badge ${statusClass}">${tx.status}</span></td>
                     <td>${tx.txHash ? this.renderTxHash(tx.txHash) : '-'}</td>
@@ -308,7 +308,7 @@ export class UIManager {
             return `
                 <tr>
                     <td>${wallet.id}</td>
-                    <td title="${wallet.address}">${this.truncateAddress(wallet.address)}</td>
+                    <td>${this.renderAddressWithCopy(wallet.address)}</td>
                     <td>${wallet.ethBalance || '-'}</td>
                     <td>${wallet.tokenBalance || '-'}</td>
                     <td><span class="status-badge ${statusClass}">${wallet.status}</span></td>
@@ -399,6 +399,21 @@ export class UIManager {
      */
     private truncateAddress(address: string): string {
         return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+    }
+
+    /**
+     * Render address with copy button
+     */
+    private renderAddressWithCopy(address: string): string {
+        const truncated = this.truncateAddress(address);
+        return `
+            <span class="address-with-copy">
+                <span title="${address}">${truncated}</span>
+                <button class="copy-btn" onclick="navigator.clipboard.writeText('${address}').then(() => alert('Address copied!'))" title="Copy address">
+                    📋
+                </button>
+            </span>
+        `;
     }
 
     /**

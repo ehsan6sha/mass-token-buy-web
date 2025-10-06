@@ -417,3 +417,29 @@ footer {
 .pagination .btn {
     min-width: 100px;
 }
+
+/* Address with copy button */
+.address-with-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.copy-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 5px;
+    opacity: 0.6;
+    transition: opacity 0.2s, transform 0.1s;
+}
+
+.copy-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.copy-btn:active {
+    transform: scale(0.95);
+}
