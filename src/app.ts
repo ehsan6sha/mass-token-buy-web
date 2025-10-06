@@ -99,8 +99,10 @@ class App {
         const clearDbBtn = document.getElementById('clearDbBtn');
         clearDbBtn?.addEventListener('click', () => this.handleClearDatabase());
 
-        // Setup global transfer back handler
+        // Setup global transfer back handlers
         (window as any).handleTransferBack = (walletId: number) => this.handleTransferBack(walletId);
+        (window as any).handleTransferBackTokens = (walletId: number) => this.handleTransferBackTokens(walletId);
+        (window as any).handleTransferBackETH = (walletId: number) => this.handleTransferBackETH(walletId);
     }
 
     /**
@@ -297,7 +299,7 @@ class App {
     }
 
     /**
-     * Handle manual transfer back from a wallet
+     * Handle manual transfer back from a wallet (both tokens and ETH)
      */
     private async handleTransferBack(walletId: number): Promise<void> {
         if (!this.isUnlocked || !this.transactionManager) {
@@ -333,6 +335,78 @@ class App {
         } catch (error: any) {
             console.error('Transfer back error:', error);
             this.uiManager.showError(`Transfer failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle manual transfer back of tokens only from a wallet
+     */
+    private async handleTransferBackTokens(walletId: number): Promise<void> {
+        if (!this.isUnlocked || !this.transactionManager) {
+            this.uiManager.showError('Application not ready. Please unlock first.');
+            return;
+        }
+
+        // Get config for token address and settings
+        const config = await this.database.getConfig();
+        if (!config) {
+            this.uiManager.showError('No configuration found');
+            return;
+        }
+
+        try {
+            this.uiManager.addLog('info', `Transferring tokens from wallet ID ${walletId}...`);
+            
+            await this.transactionManager.transferBackTokensOnly(
+                walletId,
+                this.masterPassword,
+                config.targetAddress,
+                config.tokenAddress,
+                config.minKeptTokens
+            );
+
+            // Refresh tables
+            await this.uiManager.updateTransactionsTable();
+            await this.uiManager.updateWalletsTable();
+            
+        } catch (error: any) {
+            console.error('Token transfer error:', error);
+            this.uiManager.showError(`Token transfer failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle manual transfer back of ETH only from a wallet
+     */
+    private async handleTransferBackETH(walletId: number): Promise<void> {
+        if (!this.isUnlocked || !this.transactionManager) {
+            this.uiManager.showError('Application not ready. Please unlock first.');
+            return;
+        }
+
+        // Get target address from config
+        const config = await this.database.getConfig();
+        if (!config) {
+            this.uiManager.showError('No configuration found');
+            return;
+        }
+
+        try {
+            this.uiManager.addLog('info', `Transferring ETH from wallet ID ${walletId}...`);
+            
+            await this.transactionManager.transferBackETHOnly(
+                walletId,
+                this.masterPassword,
+                config.targetAddress
+            );
+
+            // Refresh tables
+            await this.uiManager.updateTransactionsTable();
+            await this.uiManager.updateWalletsTable();
+            
+        } catch (error: any) {
+            console.error('ETH transfer error:', error);
+            this.uiManager.showError(`ETH transfer failed: ${error.message}`);
         }
     }
 

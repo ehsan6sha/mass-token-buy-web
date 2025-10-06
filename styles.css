@@ -443,3 +443,14 @@ footer {
 .copy-btn:active {
     transform: scale(0.95);
 }
+
+/* Wallet action buttons */
+td .btn-small {
+    margin: 2px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+td .btn-small:first-child {
+    margin-left: 0;
+}

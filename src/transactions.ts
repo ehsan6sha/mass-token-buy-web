@@ -779,6 +779,153 @@ export class TransactionManager {
     }
 
     /**
+     * Transfer back only tokens from a specific wallet
+     */
+    async transferBackTokensOnly(
+        walletId: number,
+        password: string,
+        targetAddress: string,
+        tokenAddress: string,
+        minKeptTokens: string
+    ): Promise<void> {
+        try {
+            // Load wallet from database
+            const walletInfo = await this.database.getWallet(walletId);
+            if (!walletInfo) {
+                throw new Error('Wallet not found');
+            }
+
+            const wallet = await this.walletService.loadWallet(walletInfo.encryptedPrivateKey, password);
+            this.log('info', `Transferring tokens from wallet: ${wallet.address}`);
+
+            // Get token balance
+            const tokenBalance = await this.walletService.getTokenBalance(
+                tokenAddress,
+                wallet.address
+            );
+
+            const minKept = parseFloat(minKeptTokens);
+            const tokensToTransfer = parseFloat(tokenBalance) - minKept;
+
+            if (tokensToTransfer <= 0) {
+                this.log('warning', `No tokens to transfer (balance: ${tokenBalance}, min kept: ${minKeptTokens})`);
+                return;
+            }
+
+            this.log('info', `Transferring ${tokensToTransfer} tokens to ${targetAddress}`);
+            
+            const txRecord: Transaction = {
+                timestamp: new Date(),
+                type: 'token_transfer',
+                fromAddress: wallet.address,
+                toAddress: targetAddress,
+                amount: tokensToTransfer.toString(),
+                token: tokenAddress,
+                status: 'pending'
+            };
+            const txId = await this.database.saveTransaction(txRecord);
+
+            const receipt = await this.walletService.transferToken(
+                wallet,
+                tokenAddress,
+                targetAddress,
+                tokensToTransfer.toString()
+            );
+
+            await this.database.updateTransaction(txId, {
+                status: 'success',
+                txHash: receipt.hash,
+                gasUsed: receipt.gasUsed.toString()
+            });
+
+            this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
+
+        } catch (error: any) {
+            this.log('error', `Token transfer failed: ${error.message}`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Transfer back only ETH from a specific wallet
+     */
+    async transferBackETHOnly(
+        walletId: number,
+        password: string,
+        targetAddress: string
+    ): Promise<void> {
+        try {
+            // Load wallet from database
+            const walletInfo = await this.database.getWallet(walletId);
+            if (!walletInfo) {
+                throw new Error('Wallet not found');
+            }
+
+            const wallet = await this.walletService.loadWallet(walletInfo.encryptedPrivateKey, password);
+            this.log('info', `Transferring ETH from wallet: ${wallet.address}`);
+
+            // Transfer ETH - use BigInt calculations
+            const ethBalanceWei = await wallet.provider!.getBalance(wallet.address);
+            const ethBalanceNum = parseFloat(ethers.formatEther(ethBalanceWei));
+
+            if (ethBalanceWei > BigInt(10000000000000)) { // > 0.00001 ETH
+                this.log('info', `Wallet balance: ${ethBalanceNum.toFixed(8)} ETH`);
+                
+                // Get current gas price
+                const feeData = await wallet.provider!.getFeeData();
+                const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
+                
+                // Calculate gas cost with 2x buffer - ALL in wei
+                const gasLimit = BigInt(21000);
+                const maxGasCostWei = gasLimit * gasPrice * BigInt(2);
+                
+                // Amount to transfer = balance - gas reserve (in wei)
+                const transferWei = ethBalanceWei - maxGasCostWei;
+
+                if (transferWei > 0) {
+                    const ethToTransfer = ethers.formatEther(transferWei);
+                    const estimatedGas = ethers.formatEther(maxGasCostWei);
+                    
+                    this.log('info', `Transferring ${parseFloat(ethToTransfer).toFixed(8)} ETH (reserved: ${parseFloat(estimatedGas).toFixed(8)})`);
+                    
+                    const txRecord: Transaction = {
+                        timestamp: new Date(),
+                        type: 'eth_transfer',
+                        fromAddress: wallet.address,
+                        toAddress: targetAddress,
+                        amount: ethToTransfer,
+                        token: 'ETH',
+                        status: 'pending'
+                    };
+                    const txId = await this.database.saveTransaction(txRecord);
+
+                    const receipt = await this.walletService.transferETH(
+                        wallet,
+                        targetAddress,
+                        ethToTransfer
+                    );
+
+                    await this.database.updateTransaction(txId, {
+                        status: 'success',
+                        txHash: receipt.hash,
+                        gasUsed: receipt.gasUsed.toString()
+                    });
+
+                    this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH: ${receipt.hash}`);
+                } else {
+                    this.log('warning', `Insufficient ETH after gas reserve (balance: ${ethBalanceNum.toFixed(8)})`);
+                }
+            } else {
+                this.log('info', `No ETH to transfer (balance: ${ethBalanceNum.toFixed(8)})`);
+            }
+
+        } catch (error: any) {
+            this.log('error', `ETH transfer failed: ${error.message}`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Generate random allocations for purchase amounts
      * Uses bounded random distribution to ensure fair allocation within constraints
      */
