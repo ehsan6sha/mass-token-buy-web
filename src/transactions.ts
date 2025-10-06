@@ -202,9 +202,31 @@ export class TransactionManager {
                 const { wallet, dbId, purchaseAmount } = wallets[i];
 
                 try {
-                    // Format purchase amount to max 18 decimals (ETH precision)
-                    const formattedAmount = purchaseAmount.toFixed(18);
-                    this.log('info', `Swapping ${purchaseAmount.toFixed(8)} ETH for tokens in wallet ${i + 1}/${wallets.length}`);
+                    // Check actual wallet balance and reserve gas
+                    const actualBalance = await wallet.provider!.getBalance(wallet.address);
+                    
+                    // Get gas price
+                    const feeData = await wallet.provider!.getFeeData();
+                    const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
+                    
+                    // Reserve gas for swap (swaps use ~300k-500k gas, use 500k with 50% buffer)
+                    const swapGasLimit = BigInt(500000);
+                    const gasReserveWei = swapGasLimit * gasPrice * BigInt(150) / BigInt(100);
+                    
+                    // Calculate available amount for swap
+                    const availableForSwapWei = actualBalance - gasReserveWei;
+                    const availableForSwap = parseFloat(ethers.formatEther(availableForSwapWei));
+                    
+                    // Use the lesser of allocated amount or available amount
+                    const actualSwapAmount = Math.min(purchaseAmount, Math.max(0, availableForSwap));
+                    
+                    if (actualSwapAmount <= 0) {
+                        this.log('error', `Wallet ${i + 1}: Insufficient balance for swap after gas (balance: ${ethers.formatEther(actualBalance)})`);
+                        continue;
+                    }
+                    
+                    const formattedAmount = actualSwapAmount.toFixed(18);
+                    this.log('info', `Swapping ${actualSwapAmount.toFixed(8)} ETH for tokens in wallet ${i + 1}/${wallets.length} (allocated: ${purchaseAmount.toFixed(8)})`);
 
                     // Create transaction record
                     const txRecord: Transaction = {
