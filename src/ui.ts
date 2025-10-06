@@ -312,16 +312,11 @@ export class UIManager {
                     <td>${wallet.ethBalance || '-'}</td>
                     <td>${wallet.tokenBalance || '-'}</td>
                     <td><span class="status-badge ${statusClass}">${wallet.status}</span></td>
-                    <td style="white-space: nowrap;">
-                        <button class="btn btn-small" onclick="window.handleTransferBackTokens(${wallet.id})" 
+                    <td>
+                        <button class="btn btn-small" onclick="window.handleTransferBack(${wallet.id})" 
                                 ${wallet.status === 'completed' ? 'disabled' : ''} 
-                                title="Transfer tokens only">
-                            🪙 Tokens
-                        </button>
-                        <button class="btn btn-small" onclick="window.handleTransferBackETH(${wallet.id})" 
-                                ${wallet.status === 'completed' ? 'disabled' : ''} 
-                                title="Transfer ETH only">
-                            💎 ETH
+                                title="Transfer tokens and remaining ETH back">
+                            Transfer Back
                         </button>
                     </td>
                 </tr>
