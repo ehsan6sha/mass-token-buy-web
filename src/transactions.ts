@@ -294,10 +294,12 @@ export class TransactionManager {
                         wallet.address
                     );
 
+                    const tokenBalanceNum = parseFloat(tokenBalance);
                     const minKeptTokens = parseFloat(config.minKeptTokens);
-                    const tokensToTransfer = parseFloat(tokenBalance) - minKeptTokens;
+                    const tokensToTransfer = tokenBalanceNum - minKeptTokens;
 
-                    if (tokensToTransfer > 0) {
+                    // Only transfer if amount is significant (> 0.000001 tokens)
+                    if (tokensToTransfer > 0.000001) {
                         // Transfer tokens
                         const txRecord: Transaction = {
                             timestamp: new Date(),
@@ -310,20 +312,27 @@ export class TransactionManager {
                         };
                         const txId = await this.database.saveTransaction(txRecord);
 
-                        const receipt = await this.walletService.transferToken(
-                            wallet,
-                            config.tokenAddress,
-                            config.targetAddress,
-                            tokensToTransfer.toString()
-                        );
+                        try {
+                            const receipt = await this.walletService.transferToken(
+                                wallet,
+                                config.tokenAddress,
+                                config.targetAddress,
+                                tokensToTransfer.toString()
+                            );
 
-                        await this.database.updateTransaction(txId, {
-                            status: 'success',
-                            txHash: receipt.hash,
-                            gasUsed: receipt.gasUsed.toString()
-                        });
+                            await this.database.updateTransaction(txId, {
+                                status: 'success',
+                                txHash: receipt.hash,
+                                gasUsed: receipt.gasUsed.toString()
+                            });
 
-                        this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
+                            this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
+                        } catch (error: any) {
+                            await this.database.updateTransaction(txId, { status: 'failed', error: error.message });
+                            this.log('warning', `Wallet ${i + 1}: Token transfer failed (${tokensToTransfer}): ${error.message}`);
+                        }
+                    } else {
+                        this.log('info', `Wallet ${i + 1}: Skipping token transfer (balance: ${tokenBalanceNum}, min kept: ${minKeptTokens})`);
                     }
 
                     // Transfer remaining ETH - use BigInt for precision
@@ -384,6 +393,13 @@ export class TransactionManager {
 
                 } catch (error: any) {
                     this.log('error', `Failed to transfer from wallet ${i + 1}: ${error.message}`, error);
+                    
+                    // Mark as completed even if transfer failed
+                    try {
+                        await this.database.updateWallet(dbId, { status: 'completed' });
+                    } catch (dbError) {
+                        this.log('error', `Failed to update wallet status: ${dbError}`);
+                    }
                 }
 
                 await this.delay(500);
@@ -667,16 +683,18 @@ export class TransactionManager {
                 throw new Error('No configuration found. Cannot determine token address.');
             }
 
-            // Transfer tokens if any
+            // Transfer tokens if balance is significant
             const tokenBalance = await this.walletService.getTokenBalance(
                 config.tokenAddress,
                 wallet.address
             );
 
+            const tokenBalanceNum = parseFloat(tokenBalance);
             const minKeptTokens = parseFloat(config.minKeptTokens);
-            const tokensToTransfer = parseFloat(tokenBalance) - minKeptTokens;
+            const tokensToTransfer = tokenBalanceNum - minKeptTokens;
 
-            if (tokensToTransfer > 0) {
+            // Only transfer if amount is significant (> 0.000001 tokens)
+            if (tokensToTransfer > 0.000001) {
                 this.log('info', `Transferring ${tokensToTransfer} tokens to ${targetAddress}`);
                 
                 const txRecord: Transaction = {
@@ -690,20 +708,27 @@ export class TransactionManager {
                 };
                 const txId = await this.database.saveTransaction(txRecord);
 
-                const receipt = await this.walletService.transferToken(
-                    wallet,
-                    config.tokenAddress,
-                    targetAddress,
-                    tokensToTransfer.toString()
-                );
+                try {
+                    const receipt = await this.walletService.transferToken(
+                        wallet,
+                        config.tokenAddress,
+                        targetAddress,
+                        tokensToTransfer.toString()
+                    );
 
-                await this.database.updateTransaction(txId, {
-                    status: 'success',
-                    txHash: receipt.hash,
-                    gasUsed: receipt.gasUsed.toString()
-                });
+                    await this.database.updateTransaction(txId, {
+                        status: 'success',
+                        txHash: receipt.hash,
+                        gasUsed: receipt.gasUsed.toString()
+                    });
 
-                this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
+                    this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
+                } catch (error: any) {
+                    await this.database.updateTransaction(txId, { status: 'failed', error: error.message });
+                    this.log('warning', `Failed to transfer tokens (${tokensToTransfer}): ${error.message}`);
+                }
+            } else {
+                this.log('info', `Skipping token transfer (balance: ${tokenBalanceNum}, min kept: ${minKeptTokens})`);
             }
 
             // Transfer ETH - use BigInt calculations to avoid precision errors
@@ -759,21 +784,30 @@ export class TransactionManager {
                         this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH: ${receipt.hash}`);
                     } catch (error: any) {
                         await this.database.updateTransaction(txId, { status: 'failed', error: error.message });
-                        throw error;
+                        this.log('warning', `ETH transfer failed: ${error.message}`);
                     }
                 } else {
-                    this.log('warning', `Insufficient ETH after gas reserve (balance: ${ethBalanceNum.toFixed(8)})`);
+                    this.log('info', `Skipping ETH transfer (insufficient after gas, balance: ${ethBalanceNum.toFixed(8)})`);
                 }
             } else {
-                this.log('info', `No ETH to transfer (balance: ${ethBalanceNum.toFixed(8)})`);
+                this.log('info', `Skipping ETH transfer (balance too low: ${ethBalanceNum.toFixed(8)})`);
             }
 
-            // Update wallet status
+            // Update wallet status to completed regardless of transfer outcomes
             await this.database.updateWallet(walletId, { status: 'completed' });
-            this.log('success', '✓ Manual transfer completed successfully');
+            this.log('success', '✓ Transfer back completed');
 
         } catch (error: any) {
-            this.log('error', `Manual transfer failed: ${error.message}`, error);
+            // Log error but don't throw - mark wallet as completed anyway
+            this.log('error', `Transfer back error: ${error.message}`, error);
+            
+            // Try to mark wallet as completed even if there was an error
+            try {
+                await this.database.updateWallet(walletId, { status: 'completed' });
+            } catch (dbError) {
+                this.log('error', `Failed to update wallet status: ${dbError}`);
+            }
+            
             throw error;
         }
     }
