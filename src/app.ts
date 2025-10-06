@@ -305,20 +305,9 @@ class App {
             return;
         }
 
-        // Prompt for optional custom gas limit
-        const gasLimitStr = prompt(
-            'Enter custom gas limit in units (e.g., 21000, 30000)\n' +
-            'Leave empty for automatic estimation:'
-        );
-        
-        let customGasLimit: number | undefined;
-        if (gasLimitStr && gasLimitStr.trim() !== '') {
-            customGasLimit = parseInt(gasLimitStr.trim());
-            if (isNaN(customGasLimit) || customGasLimit <= 0) {
-                this.uiManager.showError('Invalid gas limit. Must be a positive number (e.g., 21000)');
-                return;
-            }
-        }
+        // Use automatic gas estimation (no prompt needed)
+        // Gas costs are automatically calculated by the network
+        const customGasLimit: number | undefined = undefined;
 
         // Get target address from config
         const config = await this.database.getConfig();
