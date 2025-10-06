@@ -139,6 +139,22 @@ class App {
             const defaultRpcUrl = 'https://mainnet.base.org';
             this.walletService = new WalletService(defaultRpcUrl);
 
+            // Initialize transaction manager for manual operations
+            this.transactionManager = new TransactionManager(
+                this.walletService,
+                this.dexService,
+                this.database
+            );
+
+            // Setup callbacks for transaction manager
+            this.transactionManager.onStatusUpdate = (status) => {
+                this.uiManager.updateStatus(status);
+            };
+
+            this.transactionManager.onLog = (level, message, data) => {
+                this.uiManager.addLog(level, message, data);
+            };
+
             this.uiManager.showApp();
             this.uiManager.addLog('success', '🔓 Application unlocked successfully');
 
@@ -185,18 +201,12 @@ class App {
                 this.walletService.updateProvider(rpcUrl);
             }
 
-            // Initialize transaction manager
-            this.transactionManager = new TransactionManager(
-                this.walletService,
-                this.dexService,
-                this.database
-            );
+            // Ensure transaction manager is initialized
+            if (!this.transactionManager) {
+                throw new Error('Transaction manager not initialized');
+            }
 
-            // Setup callbacks
-            this.transactionManager.onStatusUpdate = (status) => {
-                this.uiManager.updateStatus(status);
-            };
-
+            // Update log callback to refresh tables on success
             this.transactionManager.onLog = (level, message, data) => {
                 this.uiManager.addLog(level, message, data);
                 
