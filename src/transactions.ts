@@ -304,32 +304,32 @@ export class TransactionManager {
                         this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
                     }
 
-                    // Transfer remaining ETH - use safe buffer to avoid insufficient funds
+                    // Transfer remaining ETH - use BigInt for precision
                     const ethBalanceWei = await wallet.provider!.getBalance(wallet.address);
                     const ethBalanceNum = parseFloat(ethers.formatEther(ethBalanceWei));
 
-                    if (ethBalanceNum > 0.00001) { // Only transfer if significant amount
+                    if (ethBalanceWei > BigInt(10000000000000)) { // > 0.00001 ETH
                         // Get current gas price
                         const feeData = await wallet.provider!.getFeeData();
                         const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
                         
-                        // Use safe gas limit with 50% buffer to avoid estimation issues
+                        // Calculate gas cost with 2x buffer - ALL in wei
                         const gasLimit = BigInt(21000);
-                        const maxGasCostWei = gasLimit * gasPrice * BigInt(150) / BigInt(100);
+                        const maxGasCostWei = gasLimit * gasPrice * BigInt(2);
                         
-                        // Amount to transfer = balance - max gas cost
+                        // Amount to transfer = balance - gas reserve (in wei)
                         const transferWei = ethBalanceWei - maxGasCostWei;
 
                         if (transferWei > 0) {
-                            const ethToTransfer = parseFloat(ethers.formatEther(transferWei));
-                            const estimatedGas = parseFloat(ethers.formatEther(maxGasCostWei));
+                            const ethToTransfer = ethers.formatEther(transferWei);
+                            const estimatedGas = ethers.formatEther(maxGasCostWei);
                             
                             const txRecord: Transaction = {
                                 timestamp: new Date(),
                                 type: 'eth_transfer',
                                 fromAddress: wallet.address,
                                 toAddress: config.targetAddress,
-                                amount: ethToTransfer.toFixed(18),
+                                amount: ethToTransfer,
                                 token: 'ETH',
                                 status: 'pending'
                             };
@@ -338,7 +338,7 @@ export class TransactionManager {
                             const receipt = await this.walletService.transferETH(
                                 wallet,
                                 config.targetAddress,
-                                ethToTransfer.toFixed(18)
+                                ethToTransfer
                             );
 
                             await this.database.updateTransaction(txId, {
@@ -347,7 +347,7 @@ export class TransactionManager {
                                 gasUsed: receipt.gasUsed.toString()
                             });
 
-                            this.log('success', `✓ Transferred ${ethToTransfer.toFixed(6)} ETH (gas reserved: ${estimatedGas.toFixed(8)}): ${receipt.hash}`);
+                            this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH (reserved: ${parseFloat(estimatedGas).toFixed(8)}): ${receipt.hash}`);
                         } else {
                             this.log('warning', `Wallet ${i + 1}: Insufficient ETH after gas reserve (balance: ${ethBalanceNum.toFixed(8)})`);
                         }
@@ -684,38 +684,38 @@ export class TransactionManager {
                 this.log('success', `✓ Transferred ${tokensToTransfer} tokens: ${receipt.hash}`);
             }
 
-            // Transfer ETH - try to send maximum possible after gas
+            // Transfer ETH - use BigInt calculations to avoid precision errors
             const ethBalanceWei = await wallet.provider!.getBalance(wallet.address);
             const ethBalanceNum = parseFloat(ethers.formatEther(ethBalanceWei));
 
-            if (ethBalanceNum > 0.00001) {
+            if (ethBalanceWei > BigInt(10000000000000)) { // > 0.00001 ETH
                 this.log('info', `Wallet balance: ${ethBalanceNum.toFixed(8)} ETH`);
                 
                 // Get current gas price
                 const feeData = await wallet.provider!.getFeeData();
                 const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
                 
-                // Use custom gas limit if provided, otherwise use safe default for ETH transfer
+                // Use custom gas limit if provided, otherwise use safe default
                 const gasLimit = customGasLimit ? BigInt(customGasLimit) : BigInt(21000);
                 
-                // Calculate max gas cost with buffer
-                const maxGasCostWei = gasLimit * gasPrice * BigInt(150) / BigInt(100); // 50% buffer
+                // Calculate gas cost with 2x buffer (100% extra) - ALL in wei to avoid rounding
+                const maxGasCostWei = gasLimit * gasPrice * BigInt(2);
                 
-                // Amount to transfer = balance - max gas cost
+                // Amount to transfer = balance - gas reserve (ALL in wei)
                 const transferWei = ethBalanceWei - maxGasCostWei;
 
                 if (transferWei > 0) {
-                    const ethToTransfer = parseFloat(ethers.formatEther(transferWei));
-                    const estimatedGas = parseFloat(ethers.formatEther(maxGasCostWei));
+                    const ethToTransfer = ethers.formatEther(transferWei);
+                    const estimatedGas = ethers.formatEther(maxGasCostWei);
                     
-                    this.log('info', `Transferring ${ethToTransfer.toFixed(8)} ETH (reserved for gas: ${estimatedGas.toFixed(8)})`);
+                    this.log('info', `Transferring ${parseFloat(ethToTransfer).toFixed(8)} ETH (reserved: ${parseFloat(estimatedGas).toFixed(8)})`);
                     
                     const txRecord: Transaction = {
                         timestamp: new Date(),
                         type: 'eth_transfer',
                         fromAddress: wallet.address,
                         toAddress: targetAddress,
-                        amount: ethToTransfer.toFixed(18),
+                        amount: ethToTransfer,
                         token: 'ETH',
                         status: 'pending'
                     };
@@ -725,7 +725,7 @@ export class TransactionManager {
                         const receipt = await this.walletService.transferETH(
                             wallet,
                             targetAddress,
-                            ethToTransfer.toFixed(18)
+                            ethToTransfer
                         );
 
                         await this.database.updateTransaction(txId, {
@@ -734,7 +734,7 @@ export class TransactionManager {
                             gasUsed: receipt.gasUsed.toString()
                         });
 
-                        this.log('success', `✓ Transferred ${ethToTransfer.toFixed(6)} ETH: ${receipt.hash}`);
+                        this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH: ${receipt.hash}`);
                     } catch (error: any) {
                         await this.database.updateTransaction(txId, { status: 'failed', error: error.message });
                         throw error;
