@@ -189,6 +189,11 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="pagination" id="txPagination" style="display: none;">
+                    <button class="btn btn-small" id="txPrevPage">Previous</button>
+                    <span id="txPageInfo">Page 1</span>
+                    <button class="btn btn-small" id="txNextPage">Next</button>
+                </div>
             </div>
 
             <!-- Wallets Section -->
@@ -207,14 +212,20 @@
                                 <th>ETH Balance</th>
                                 <th>Token Balance</th>
                                 <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="walletsTableBody">
                             <tr>
-                                <td colspan="5" class="no-data">No wallets created yet</td>
+                                <td colspan="6" class="no-data">No wallets created yet</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+                <div class="pagination" id="walletsPagination" style="display: none;">
+                    <button class="btn btn-small" id="walletsPrevPage">Previous</button>
+                    <span id="walletsPageInfo">Page 1</span>
+                    <button class="btn btn-small" id="walletsNextPage">Next</button>
                 </div>
             </div>
         </div>

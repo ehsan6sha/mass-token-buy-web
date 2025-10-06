@@ -80,6 +80,27 @@ export class Database {
     }
 
     /**
+     * Get a single wallet by ID
+     */
+    async getWallet(id: number): Promise<WalletInfo | undefined> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db!.transaction(['wallets'], 'readonly');
+            const store = transaction.objectStore('wallets');
+            const request = store.get(id);
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+
+            request.onerror = () => {
+                reject(new Error('Failed to get wallet'));
+            };
+        });
+    }
+
+    /**
      * Get all wallets
      */
     async getAllWallets(): Promise<WalletInfo[]> {

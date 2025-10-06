@@ -394,3 +394,26 @@ footer {
 .card {
     animation: fadeIn 0.3s ease;
 }
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 15px;
+    padding: 15px;
+    background: var(--input-bg);
+    border-radius: 8px;
+}
+
+.pagination span {
+    color: var(--text-primary);
+    font-size: 14px;
+    min-width: 200px;
+    text-align: center;
+}
+
+.pagination .btn {
+    min-width: 100px;
+}

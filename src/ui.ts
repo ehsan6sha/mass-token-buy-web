@@ -6,6 +6,12 @@ import { Database } from './database';
 export class UIManager {
     private logs: LogEntry[] = [];
     private database: Database;
+    private txCurrentPage: number = 1;
+    private walletsCurrentPage: number = 1;
+    private itemsPerPage: number = 20;
+
+    // Callback for manual transfer back
+    public onTransferBack?: (walletId: number, gasLimit?: number) => Promise<void>;
 
     constructor(database: Database) {
         this.database = database;
@@ -32,6 +38,12 @@ export class UIManager {
         // Wallets
         const exportWalletsBtn = document.getElementById('exportWalletsBtn');
         exportWalletsBtn?.addEventListener('click', () => this.exportWallets());
+
+        // Pagination
+        document.getElementById('txPrevPage')?.addEventListener('click', () => this.changeTxPage(-1));
+        document.getElementById('txNextPage')?.addEventListener('click', () => this.changeTxPage(1));
+        document.getElementById('walletsPrevPage')?.addEventListener('click', () => this.changeWalletsPage(-1));
+        document.getElementById('walletsNextPage')?.addEventListener('click', () => this.changeWalletsPage(1));
     }
 
     /**
@@ -173,20 +185,28 @@ export class UIManager {
      */
     async updateTransactionsTable(): Promise<void> {
         const transactions = await this.database.getAllTransactions();
-        this.renderTransactions(transactions);
+        this.renderTransactionsPaginated(transactions);
     }
 
     /**
-     * Render transactions in table
+     * Render transactions with pagination
      */
-    private renderTransactions(transactions: Transaction[]): void {
+    private renderTransactionsPaginated(allTransactions: Transaction[]): void {
         const tbody = document.getElementById('transactionTableBody');
         if (!tbody) return;
 
-        if (transactions.length === 0) {
+        if (allTransactions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="no-data">No transactions yet</td></tr>';
+            document.getElementById('txPagination')!.style.display = 'none';
             return;
         }
+
+        // Pagination logic
+        const totalPages = Math.ceil(allTransactions.length / this.itemsPerPage);
+        this.txCurrentPage = Math.max(1, Math.min(this.txCurrentPage, totalPages));
+        const startIdx = (this.txCurrentPage - 1) * this.itemsPerPage;
+        const endIdx = startIdx + this.itemsPerPage;
+        const transactions = allTransactions.slice(startIdx, endIdx);
 
         tbody.innerHTML = transactions.map(tx => {
             const statusClass = tx.status === 'success' ? 'success' : tx.status === 'failed' ? 'failed' : 'pending';
@@ -204,6 +224,9 @@ export class UIManager {
                 </tr>
             `;
         }).join('');
+
+        // Update pagination controls
+        this.updatePaginationControls('tx', this.txCurrentPage, totalPages, allTransactions.length);
     }
 
     /**
@@ -213,7 +236,7 @@ export class UIManager {
         const transactions = await this.database.getAllTransactions();
         
         if (!query) {
-            this.renderTransactions(transactions);
+            this.renderTransactionsPaginated(transactions);
             return;
         }
 
@@ -224,7 +247,7 @@ export class UIManager {
                    tx.type.includes(query.toLowerCase());
         });
 
-        this.renderTransactions(filtered);
+        this.renderTransactionsPaginated(filtered);
     }
 
     /**
@@ -255,35 +278,52 @@ export class UIManager {
      */
     async updateWalletsTable(): Promise<void> {
         const wallets = await this.database.getAllWallets();
-        this.renderWallets(wallets);
+        this.renderWalletsPaginated(wallets);
     }
 
     /**
-     * Render wallets in table
+     * Render wallets with pagination
      */
-    private renderWallets(wallets: WalletInfo[]): void {
+    private renderWalletsPaginated(allWallets: WalletInfo[]): void {
         const tbody = document.getElementById('walletsTableBody');
         if (!tbody) return;
 
-        if (wallets.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="no-data">No wallets created yet</td></tr>';
+        if (allWallets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="no-data">No wallets created yet</td></tr>';
+            document.getElementById('walletsPagination')!.style.display = 'none';
             return;
         }
 
-        tbody.innerHTML = wallets.map((wallet, index) => {
+        // Pagination logic
+        const totalPages = Math.ceil(allWallets.length / this.itemsPerPage);
+        this.walletsCurrentPage = Math.max(1, Math.min(this.walletsCurrentPage, totalPages));
+        const startIdx = (this.walletsCurrentPage - 1) * this.itemsPerPage;
+        const endIdx = startIdx + this.itemsPerPage;
+        const wallets = allWallets.slice(startIdx, endIdx);
+
+        tbody.innerHTML = wallets.map((wallet) => {
             const statusClass = wallet.status === 'completed' ? 'success' : 
                               wallet.status === 'created' ? 'pending' : 'warning';
             
             return `
                 <tr>
-                    <td>${index + 1}</td>
-                    <td title="${wallet.address}">${wallet.address}</td>
+                    <td>${wallet.id}</td>
+                    <td title="${wallet.address}">${this.truncateAddress(wallet.address)}</td>
                     <td>${wallet.ethBalance || '-'}</td>
                     <td>${wallet.tokenBalance || '-'}</td>
                     <td><span class="status-badge ${statusClass}">${wallet.status}</span></td>
+                    <td>
+                        <button class="btn btn-small" onclick="window.handleTransferBack(${wallet.id})" 
+                                ${wallet.status === 'completed' ? 'disabled' : ''}>
+                            Transfer Back
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
+
+        // Update pagination controls
+        this.updatePaginationControls('wallets', this.walletsCurrentPage, totalPages, allWallets.length);
     }
 
     /**
@@ -370,7 +410,7 @@ export class UIManager {
     }
 
     /**
-     * Download file
+     * Download file helper
      */
     private downloadFile(filename: string, content: string): void {
         const blob = new Blob([content], { type: 'text/plain' });
@@ -378,10 +418,50 @@ export class UIManager {
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
+        a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Change transaction page
+     */
+    private async changeTxPage(delta: number): Promise<void> {
+        this.txCurrentPage += delta;
+        await this.updateTransactionsTable();
+    }
+
+    /**
+     * Change wallets page
+     */
+    private async changeWalletsPage(delta: number): Promise<void> {
+        this.walletsCurrentPage += delta;
+        await this.updateWalletsTable();
+    }
+
+    /**
+     * Update pagination controls
+     */
+    private updatePaginationControls(type: 'wallets' | 'tx', currentPage: number, totalPages: number, totalItems: number): void {
+        const prefix = type === 'wallets' ? 'wallets' : 'tx';
+        const pagination = document.getElementById(`${prefix}Pagination`);
+        const pageInfo = document.getElementById(`${prefix}PageInfo`);
+        const prevBtn = document.getElementById(`${prefix}PrevPage`) as HTMLButtonElement;
+        const nextBtn = document.getElementById(`${prefix}NextPage`) as HTMLButtonElement;
+
+        if (!pagination || !pageInfo || !prevBtn || !nextBtn) return;
+
+        // Show/hide pagination based on whether we have multiple pages
+        if (totalPages > 1) {
+            pagination.style.display = 'flex';
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${totalItems} total)`;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage === totalPages;
+        } else {
+            pagination.style.display = 'none';
+        }
     }
 
     /**

@@ -98,6 +98,9 @@ class App {
         // Clear database button
         const clearDbBtn = document.getElementById('clearDbBtn');
         clearDbBtn?.addEventListener('click', () => this.handleClearDatabase());
+
+        // Setup global transfer back handler
+        (window as any).handleTransferBack = (walletId: number) => this.handleTransferBack(walletId);
     }
 
     /**
@@ -280,6 +283,51 @@ class App {
         } catch (error) {
             console.error('Clear database error:', error);
             this.uiManager.showError('Failed to clear database');
+        }
+    }
+
+    /**
+     * Handle manual transfer back from a wallet
+     */
+    private async handleTransferBack(walletId: number): Promise<void> {
+        if (!this.isUnlocked || !this.transactionManager) {
+            this.uiManager.showError('Application not ready. Please unlock first.');
+            return;
+        }
+
+        // Prompt for optional custom gas limit
+        const gasLimitStr = prompt('Enter custom gas limit (leave empty for auto-estimation):');
+        const customGasLimit = gasLimitStr ? parseInt(gasLimitStr) : undefined;
+
+        if (gasLimitStr && (isNaN(customGasLimit!) || customGasLimit! <= 0)) {
+            this.uiManager.showError('Invalid gas limit');
+            return;
+        }
+
+        // Get target address from config
+        const config = await this.database.getConfig();
+        if (!config) {
+            this.uiManager.showError('No configuration found');
+            return;
+        }
+
+        try {
+            this.uiManager.addLog('info', `Starting manual transfer from wallet ID ${walletId}...`);
+            
+            await this.transactionManager.transferBackFromWallet(
+                walletId,
+                this.masterPassword,
+                config.targetAddress,
+                customGasLimit
+            );
+
+            // Refresh tables
+            await this.uiManager.updateTransactionsTable();
+            await this.uiManager.updateWalletsTable();
+            
+        } catch (error: any) {
+            console.error('Transfer back error:', error);
+            this.uiManager.showError(`Transfer failed: ${error.message}`);
         }
     }
 
