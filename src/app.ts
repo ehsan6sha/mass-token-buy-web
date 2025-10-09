@@ -39,6 +39,10 @@ class App {
             // Initialize UI
             this.uiManager.init();
             this.uiManager.showPasswordSection();
+            
+            // Make UI manager available globally for pagination callbacks
+            (window as any).uiManager = this.uiManager;
+            
             console.log('✓ UI initialized');
 
             // Setup event listeners
@@ -382,7 +386,9 @@ class App {
 document.addEventListener('DOMContentLoaded', () => {
     const app = new App();
     app.init();
+    // Expose app instance globally for debugging and UI callbacks
+    (window as any).appInstance = app;
 });
 
-// Make app available globally for debugging
+// Make app class available globally for debugging
 (window as any).app = App;

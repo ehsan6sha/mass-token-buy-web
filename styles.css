@@ -405,6 +405,7 @@ footer {
     padding: 15px;
     background: var(--input-bg);
     border-radius: 8px;
+    flex-wrap: wrap;
 }
 
 .pagination span {
@@ -416,6 +417,47 @@ footer {
 
 .pagination .btn {
     min-width: 100px;
+}
+
+/* Pagination page numbers */
+.page-count {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-right: 10px;
+}
+
+.page-numbers {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.page-number {
+    min-width: 36px !important;
+    padding: 6px 10px !important;
+    font-size: 13px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s;
+}
+
+.page-number:hover:not(:disabled) {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.page-number.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 82, 255, 0.3);
+}
+
+.page-ellipsis {
+    color: var(--text-secondary);
+    padding: 0 5px;
+    user-select: none;
 }
 
 /* Address with copy button */

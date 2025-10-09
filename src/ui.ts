@@ -201,12 +201,17 @@ export class UIManager {
             return;
         }
 
+        // Sort by timestamp descending (latest first)
+        const sortedTransactions = [...allTransactions].sort((a, b) => {
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+
         // Pagination logic
-        const totalPages = Math.ceil(allTransactions.length / this.itemsPerPage);
+        const totalPages = Math.ceil(sortedTransactions.length / this.itemsPerPage);
         this.txCurrentPage = Math.max(1, Math.min(this.txCurrentPage, totalPages));
         const startIdx = (this.txCurrentPage - 1) * this.itemsPerPage;
         const endIdx = startIdx + this.itemsPerPage;
-        const transactions = allTransactions.slice(startIdx, endIdx);
+        const transactions = sortedTransactions.slice(startIdx, endIdx);
 
         tbody.innerHTML = transactions.map(tx => {
             const statusClass = tx.status === 'success' ? 'success' : tx.status === 'failed' ? 'failed' : 'pending';
@@ -226,7 +231,7 @@ export class UIManager {
         }).join('');
 
         // Update pagination controls
-        this.updatePaginationControls('tx', this.txCurrentPage, totalPages, allTransactions.length);
+        this.updatePaginationControls('tx', this.txCurrentPage, totalPages, sortedTransactions.length);
     }
 
     /**
@@ -294,12 +299,17 @@ export class UIManager {
             return;
         }
 
+        // Sort by creation time descending (latest first)
+        const sortedWallets = [...allWallets].sort((a, b) => {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
         // Pagination logic
-        const totalPages = Math.ceil(allWallets.length / this.itemsPerPage);
+        const totalPages = Math.ceil(sortedWallets.length / this.itemsPerPage);
         this.walletsCurrentPage = Math.max(1, Math.min(this.walletsCurrentPage, totalPages));
         const startIdx = (this.walletsCurrentPage - 1) * this.itemsPerPage;
         const endIdx = startIdx + this.itemsPerPage;
-        const wallets = allWallets.slice(startIdx, endIdx);
+        const wallets = sortedWallets.slice(startIdx, endIdx);
 
         tbody.innerHTML = wallets.map((wallet) => {
             const statusClass = wallet.status === 'completed' ? 'success' : 
@@ -324,7 +334,7 @@ export class UIManager {
         }).join('');
 
         // Update pagination controls
-        this.updatePaginationControls('wallets', this.walletsCurrentPage, totalPages, allWallets.length);
+        this.updatePaginationControls('wallets', this.walletsCurrentPage, totalPages, sortedWallets.length);
     }
 
     /**
@@ -450,10 +460,26 @@ export class UIManager {
     }
 
     /**
+     * Go to specific transaction page (public for onclick handlers)
+     */
+    async goToTxPage(page: number): Promise<void> {
+        this.txCurrentPage = page;
+        await this.updateTransactionsTable();
+    }
+
+    /**
      * Change wallets page
      */
     private async changeWalletsPage(delta: number): Promise<void> {
         this.walletsCurrentPage += delta;
+        await this.updateWalletsTable();
+    }
+
+    /**
+     * Go to specific wallet page (public for onclick handlers)
+     */
+    async goToWalletsPage(page: number): Promise<void> {
+        this.walletsCurrentPage = page;
         await this.updateWalletsTable();
     }
 
@@ -472,12 +498,75 @@ export class UIManager {
         // Show/hide pagination based on whether we have multiple pages
         if (totalPages > 1) {
             pagination.style.display = 'flex';
-            pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${totalItems} total)`;
+            
+            // Generate page numbers with smart truncation
+            const pageNumbers = this.generatePageNumbers(currentPage, totalPages);
+            const pageNumbersHTML = pageNumbers.map(pageNum => {
+                if (pageNum === -1) {
+                    // Ellipsis
+                    return '<span class="page-ellipsis">...</span>';
+                }
+                const activeClass = pageNum === currentPage ? 'active' : '';
+                const clickHandler = type === 'wallets' ? 
+                    `window.uiManager.goToWalletsPage(${pageNum})` : 
+                    `window.uiManager.goToTxPage(${pageNum})`;
+                return `<button class="btn btn-small page-number ${activeClass}" onclick="${clickHandler}">${pageNum}</button>`;
+            }).join('');
+            
+            pageInfo.innerHTML = `
+                <span class="page-count">${totalItems} total items</span>
+                <div class="page-numbers">${pageNumbersHTML}</div>
+            `;
+            
             prevBtn.disabled = currentPage === 1;
             nextBtn.disabled = currentPage === totalPages;
         } else {
             pagination.style.display = 'none';
         }
+    }
+
+    /**
+     * Generate smart page numbers for pagination
+     * Shows first page, last page, current page and neighbors
+     * Uses ellipsis (...) for gaps
+     */
+    private generatePageNumbers(currentPage: number, totalPages: number): number[] {
+        const pages: number[] = [];
+        const delta = 2; // Number of pages to show on each side of current page
+
+        if (totalPages <= 7) {
+            // Show all pages if 7 or fewer
+            for (let i = 1; i <= totalPages; i++) {
+                pages.push(i);
+            }
+        } else {
+            // Always show first page
+            pages.push(1);
+
+            // Calculate range around current page
+            const rangeStart = Math.max(2, currentPage - delta);
+            const rangeEnd = Math.min(totalPages - 1, currentPage + delta);
+
+            // Add ellipsis before range if needed
+            if (rangeStart > 2) {
+                pages.push(-1); // -1 represents ellipsis
+            }
+
+            // Add range
+            for (let i = rangeStart; i <= rangeEnd; i++) {
+                pages.push(i);
+            }
+
+            // Add ellipsis after range if needed
+            if (rangeEnd < totalPages - 1) {
+                pages.push(-1);
+            }
+
+            // Always show last page
+            pages.push(totalPages);
+        }
+
+        return pages;
     }
 
     /**
