@@ -360,49 +360,56 @@ export class TransactionManager {
                     const ethBalanceWei = await wallet.provider!.getBalance(wallet.address);
                     const ethBalanceNum = parseFloat(ethers.formatEther(ethBalanceWei));
 
-                    if (ethBalanceWei > BigInt(10000000000000)) { // > 0.00001 ETH
-                        // Get current gas price
-                        const feeData = await wallet.provider!.getFeeData();
-                        const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
-                        
-                        // Calculate gas cost with 2x buffer - ALL in wei
-                        const gasLimit = BigInt(21000);
-                        const maxGasCostWei = gasLimit * gasPrice * BigInt(2);
-                        
-                        // Amount to transfer = balance - gas reserve (in wei)
-                        const transferWei = ethBalanceWei - maxGasCostWei;
-
-                        if (transferWei > 0) {
-                            const ethToTransfer = ethers.formatEther(transferWei);
-                            const estimatedGas = ethers.formatEther(maxGasCostWei);
+                    // Lower threshold to 0.000001 ETH (1 gwei) to catch smaller amounts
+                    if (ethBalanceWei > BigInt(1000000000000)) { // > 0.000001 ETH
+                        try {
+                            // Get current gas price
+                            const feeData = await wallet.provider!.getFeeData();
+                            const gasPrice = feeData.gasPrice || ethers.parseUnits('0.1', 'gwei');
                             
-                            const txRecord: Transaction = {
-                                timestamp: new Date(),
-                                type: 'eth_transfer',
-                                fromAddress: wallet.address,
-                                toAddress: config.targetAddress,
-                                amount: ethToTransfer,
-                                token: 'ETH',
-                                status: 'pending'
-                            };
-                            const txId = await this.database.saveTransaction(txRecord);
+                            // Calculate gas cost with 2x buffer - ALL in wei
+                            const gasLimit = BigInt(21000);
+                            const maxGasCostWei = gasLimit * gasPrice * BigInt(2);
+                            
+                            // Amount to transfer = balance - gas reserve (in wei)
+                            const transferWei = ethBalanceWei - maxGasCostWei;
 
-                            const receipt = await this.walletService.transferETH(
-                                wallet,
-                                config.targetAddress,
-                                ethToTransfer
-                            );
+                            if (transferWei > 0) {
+                                const ethToTransfer = ethers.formatEther(transferWei);
+                                const estimatedGas = ethers.formatEther(maxGasCostWei);
+                                
+                                const txRecord: Transaction = {
+                                    timestamp: new Date(),
+                                    type: 'eth_transfer',
+                                    fromAddress: wallet.address,
+                                    toAddress: config.targetAddress,
+                                    amount: ethToTransfer,
+                                    token: 'ETH',
+                                    status: 'pending'
+                                };
+                                const txId = await this.database.saveTransaction(txRecord);
 
-                            await this.database.updateTransaction(txId, {
-                                status: 'success',
-                                txHash: receipt.hash,
-                                gasUsed: receipt.gasUsed.toString()
-                            });
+                                const receipt = await this.walletService.transferETH(
+                                    wallet,
+                                    config.targetAddress,
+                                    ethToTransfer
+                                );
 
-                            this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH (reserved: ${parseFloat(estimatedGas).toFixed(8)}): ${receipt.hash}`);
-                        } else {
-                            this.log('warning', `Wallet ${i + 1}: Insufficient ETH after gas reserve (balance: ${ethBalanceNum.toFixed(8)})`);
+                                await this.database.updateTransaction(txId, {
+                                    status: 'success',
+                                    txHash: receipt.hash,
+                                    gasUsed: receipt.gasUsed.toString()
+                                });
+
+                                this.log('success', `✓ Transferred ${parseFloat(ethToTransfer).toFixed(6)} ETH (reserved: ${parseFloat(estimatedGas).toFixed(8)}): ${receipt.hash}`);
+                            } else {
+                                this.log('info', `Wallet ${i + 1}: Insufficient ETH after gas reserve (balance: ${ethBalanceNum.toFixed(8)} ETH, gas: ${ethers.formatEther(maxGasCostWei)} ETH)`);
+                            }
+                        } catch (error: any) {
+                            this.log('warning', `Wallet ${i + 1}: ETH transfer failed - ${error.message}`);
                         }
+                    } else {
+                        this.log('info', `Wallet ${i + 1}: Skipping ETH transfer (balance too low: ${ethBalanceNum.toFixed(8)} ETH)`);
                     }
 
                     // Update wallet status
@@ -828,7 +835,8 @@ export class TransactionManager {
             const ethBalanceWei = await wallet.provider!.getBalance(wallet.address);
             const ethBalanceNum = parseFloat(ethers.formatEther(ethBalanceWei));
 
-            if (ethBalanceWei > BigInt(10000000000000)) { // > 0.00001 ETH
+            // Lower threshold to 0.000001 ETH (1 gwei) to catch smaller amounts
+            if (ethBalanceWei > BigInt(1000000000000)) { // > 0.000001 ETH
                 this.log('info', `Wallet balance: ${ethBalanceNum.toFixed(8)} ETH`);
                 
                 // Get current gas price
