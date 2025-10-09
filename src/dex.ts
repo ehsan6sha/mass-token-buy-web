@@ -251,26 +251,40 @@ export class DexService {
         const tx = await router.exactInputSingle(swapParams, txOptions);
         console.log(`Transaction submitted: ${tx.hash}`);
         
-        // Wait for confirmation with timeout
+        // Wait for confirmation with extended timeout and periodic progress updates
         console.log('Waiting for confirmation...');
-        const receipt = await Promise.race([
-            tx.wait(),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Transaction confirmation timeout (60s). Gas price may be too low.')), 60000)
-            )
-        ]) as ethers.TransactionReceipt;
-
-        if (!receipt || receipt.status !== 1) {
-            throw new Error('Swap transaction failed');
-        }
+        let waitTimeSeconds = 0;
+        const progressInterval = setInterval(() => {
+            waitTimeSeconds += 10;
+            console.log(`Still waiting for confirmation... (${waitTimeSeconds}s)`);
+        }, 10000);
         
-        console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+        try {
+            const receipt = await Promise.race([
+                tx.wait(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Transaction confirmation timeout (120s). Gas price may be too low.')), 120000)
+                )
+            ]) as ethers.TransactionReceipt;
+            
+            clearInterval(progressInterval);
+            
+            if (!receipt || receipt.status !== 1) {
+                throw new Error('Swap transaction failed');
+            }
+            
+            console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+            
+            return {
+                txHash: receipt.hash,
+                receipt: receipt,
+                estimatedOutput: ethers.formatUnits(bestQuote, decimals)
+            };
+        } catch (error) {
+            clearInterval(progressInterval);
+            throw error;
+        }
 
-        return {
-            txHash: receipt.hash,
-            receipt: receipt,
-            estimatedOutput: ethers.formatUnits(bestQuote, decimals)
-        };
     }
 
     /**
@@ -375,6 +389,7 @@ export class DexService {
         console.log(`Max total gas cost: ${ethers.formatEther(txOptions.maxFeePerGas * BigInt(txOptions.gasLimit))} ETH`);
 
         // Execute swap
+        console.log('Submitting swap transaction...');
         const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
         const tx = await router.swapExactETHForTokens(
             amountOutMin,
@@ -383,18 +398,41 @@ export class DexService {
             deadline,
             txOptions
         );
+        console.log(`Transaction submitted: ${tx.hash}`);
 
-        const receipt = await tx.wait();
-
-        if (!receipt || receipt.status !== 1) {
-            throw new Error('Swap transaction failed');
+        // Wait for confirmation with periodic progress updates
+        console.log('Waiting for confirmation...');
+        let waitTimeSeconds = 0;
+        const progressInterval = setInterval(() => {
+            waitTimeSeconds += 10;
+            console.log(`Still waiting for confirmation... (${waitTimeSeconds}s)`);
+        }, 10000);
+        
+        try {
+            const receipt = await Promise.race([
+                tx.wait(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Transaction confirmation timeout (120s). Gas price may be too low.')), 120000)
+                )
+            ]) as ethers.TransactionReceipt;
+            
+            clearInterval(progressInterval);
+            
+            if (!receipt || receipt.status !== 1) {
+                throw new Error('Swap transaction failed');
+            }
+            
+            console.log(`Transaction confirmed in block ${receipt.blockNumber}`);
+            
+            return {
+                txHash: receipt.hash,
+                receipt: receipt,
+                estimatedOutput: ethers.formatUnits(expectedOutput, decimals)
+            };
+        } catch (error) {
+            clearInterval(progressInterval);
+            throw error;
         }
-
-        return {
-            txHash: receipt.hash,
-            receipt: receipt,
-            estimatedOutput: ethers.formatUnits(expectedOutput, decimals)
-        };
     }
 
     /**

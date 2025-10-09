@@ -13,6 +13,13 @@ export class TransactionManager {
     private isRunning: boolean = false;
     private shouldStop: boolean = false;
     
+    // Watchdog mechanism
+    private lastActivityTime: number = Date.now();
+    private watchdogTimer: NodeJS.Timeout | null = null;
+    private watchdogTimeout: number = 60000; // 60 seconds
+    private currentOperation: string = 'idle';
+    private isStuck: boolean = false;
+    
     // Callbacks for UI updates
     public onStatusUpdate?: (status: OperationStatus) => void;
     public onLog?: (level: 'info' | 'success' | 'warning' | 'error', message: string, data?: any) => void;
@@ -33,6 +40,7 @@ export class TransactionManager {
 
         this.isRunning = true;
         this.shouldStop = false;
+        this.startWatchdog();
 
         const status: OperationStatus = {
             isRunning: true,
@@ -46,9 +54,11 @@ export class TransactionManager {
 
         try {
             this.log('info', '🚀 Starting mass token buy operation');
+            this.updateActivity('Starting operation');
             
             // Step 1: Validate configuration
             this.log('info', 'Validating configuration...');
+            this.updateActivity('Validating configuration');
             this.validateConfig(config);
             status.currentStep = 'Configuration validated';
             this.updateStatus(status);
@@ -59,6 +69,7 @@ export class TransactionManager {
 
             // Step 2: Load master wallet
             this.log('info', 'Loading master wallet...');
+            this.updateActivity('Loading master wallet');
             const masterWallet = this.walletService.getWalletFromPrivateKey(config.masterPrivateKey);
             const masterBalance = await this.walletService.getBalance(masterWallet.address);
             this.log('success', `Master wallet loaded: ${masterWallet.address}`);
@@ -99,6 +110,7 @@ export class TransactionManager {
 
             // Step 3: Create wallets
             this.log('info', `Creating ${config.numWallets} wallets...`);
+            this.updateActivity('Creating wallets');
             status.currentStep = 'Creating wallets';
             this.updateStatus(status);
 
@@ -118,6 +130,7 @@ export class TransactionManager {
                 status.walletsCreated++;
                 status.progress = (i + 1) / (config.numWallets * 4) * 100; // 4 main steps
                 this.updateStatus(status);
+                this.updateActivity(`Created wallet ${i + 1}/${config.numWallets}`);
 
                 this.log('info', `Created wallet ${i + 1}/${config.numWallets}: ${wallet.address}`);
                 
@@ -132,6 +145,7 @@ export class TransactionManager {
 
             // Step 4: Fund wallets with ETH
             this.log('info', 'Funding wallets with ETH...');
+            this.updateActivity('Funding wallets');
             status.currentStep = 'Funding wallets';
             this.updateStatus(status);
 
@@ -143,6 +157,7 @@ export class TransactionManager {
 
                 try {
                     this.log('info', `Funding wallet ${i + 1}/${wallets.length}: ${wallet.address} with ${amountToSend} ETH (${purchaseAmount.toFixed(8)} for purchase)`);
+                    this.updateActivity(`Funding wallet ${i + 1}/${wallets.length}`);
                     
                     // Create transaction record
                     const txRecord: Transaction = {
@@ -193,6 +208,7 @@ export class TransactionManager {
 
             // Step 5: Swap ETH for tokens
             this.log('info', 'Swapping ETH for tokens...');
+            this.updateActivity('Swapping tokens');
             status.currentStep = 'Swapping tokens';
             this.updateStatus(status);
 
@@ -202,6 +218,7 @@ export class TransactionManager {
                 const { wallet, dbId, purchaseAmount } = wallets[i];
 
                 try {
+                    this.updateActivity(`Swapping in wallet ${i + 1}/${wallets.length}`);
                     // Check actual wallet balance and reserve gas
                     const actualBalance = await wallet.provider!.getBalance(wallet.address);
                     
@@ -241,12 +258,14 @@ export class TransactionManager {
                     const txId = await this.database.saveTransaction(txRecord);
 
                     // Execute swap using DEX with automatic gas management
+                    this.updateActivity(`Executing swap for wallet ${i + 1}/${wallets.length}`);
                     const swapResult = await this.dexService.swapETHToToken(
                         wallet,
                         config.tokenAddress,
                         formattedAmount,
                         0.5 // 0.5% slippage
                     );
+                    this.updateActivity(`Swap completed for wallet ${i + 1}/${wallets.length}`);
 
                     // Update transaction record
                     await this.database.updateTransaction(txId, {
@@ -277,6 +296,7 @@ export class TransactionManager {
 
             // Step 6: Transfer tokens and remaining ETH to target address
             this.log('info', 'Transferring tokens to target address...');
+            this.updateActivity('Transferring to target');
             status.currentStep = 'Transferring to target';
             this.updateStatus(status);
 
@@ -287,6 +307,7 @@ export class TransactionManager {
 
                 try {
                     this.log('info', `Transferring from wallet ${i + 1}/${wallets.length}`);
+                    this.updateActivity(`Transferring from wallet ${i + 1}/${wallets.length}`);
 
                     // Get token balance
                     const tokenBalance = await this.walletService.getTokenBalance(
@@ -411,6 +432,7 @@ export class TransactionManager {
             this.updateStatus(status);
 
             this.log('success', '🎉 Mass token buy operation completed successfully!');
+            this.updateActivity('Completed');
         } catch (error: any) {
             this.log('error', `Operation failed: ${error.message}`, error);
             status.currentStep = 'Failed - Attempting cleanup';
@@ -428,6 +450,7 @@ export class TransactionManager {
             this.updateStatus(status);
             throw error;
         } finally {
+            this.stopWatchdog();
             this.isRunning = false;
         }
     }
@@ -582,6 +605,76 @@ export class TransactionManager {
         if (this.isRunning) {
             this.shouldStop = true;
             this.log('warning', 'Stopping operation...');
+        }
+    }
+
+    /**
+     * Start the watchdog timer
+     */
+    private startWatchdog(): void {
+        this.lastActivityTime = Date.now();
+        this.isStuck = false;
+        this.currentOperation = 'Starting';
+        
+        // Check every 10 seconds
+        this.watchdogTimer = setInterval(() => {
+            this.checkWatchdog();
+        }, 10000);
+        
+        this.log('info', '🐕 Watchdog started (will alert if stuck for >60s)');
+    }
+
+    /**
+     * Stop the watchdog timer
+     */
+    private stopWatchdog(): void {
+        if (this.watchdogTimer) {
+            clearInterval(this.watchdogTimer);
+            this.watchdogTimer = null;
+            this.log('info', '🐕 Watchdog stopped');
+        }
+    }
+
+    /**
+     * Update last activity time
+     */
+    private updateActivity(operation: string): void {
+        this.lastActivityTime = Date.now();
+        this.currentOperation = operation;
+        this.isStuck = false; // Reset stuck flag
+    }
+
+    /**
+     * Check if operation is stuck
+     */
+    private checkWatchdog(): void {
+        const timeSinceLastActivity = Date.now() - this.lastActivityTime;
+        
+        if (timeSinceLastActivity > this.watchdogTimeout) {
+            if (!this.isStuck) {
+                // First time detecting stuck state
+                this.isStuck = true;
+                this.log('warning', `⚠️ WATCHDOG ALERT: Operation appears stuck! Last activity: "${this.currentOperation}" (${Math.floor(timeSinceLastActivity / 1000)}s ago)`);
+                this.log('warning', 'Watchdog will continue monitoring. If this persists, the operation may need manual intervention.');
+                
+                // Try to force a status update to trigger any pending UI updates
+                if (this.onStatusUpdate) {
+                    const status = {
+                        isRunning: this.isRunning,
+                        walletsCreated: 0,
+                        ethTransferred: 0,
+                        swapsCompleted: 0,
+                        tokensTransferred: 0,
+                        currentStep: `⚠️ Stuck at: ${this.currentOperation}`,
+                        progress: 0
+                    };
+                    this.onStatusUpdate(status);
+                }
+            } else if (timeSinceLastActivity > this.watchdogTimeout * 2) {
+                // Been stuck for more than 2 minutes
+                this.log('error', `❌ CRITICAL: Operation stuck for ${Math.floor(timeSinceLastActivity / 1000)}s. Last activity: "${this.currentOperation}"`);
+                this.log('error', 'Consider stopping the operation and checking the logs.');
+            }
         }
     }
 
